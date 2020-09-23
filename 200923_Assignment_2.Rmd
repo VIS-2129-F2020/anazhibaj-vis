@@ -1,0 +1,352 @@
+---
+title: "Assignment 2"
+author: "Ana Zhibaj"
+output: html_document
+html_document:
+  theme: cosmo
+  toc: true
+  toc_depth: 3
+  toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## Loading data
+
+``` {r load libraries, results = "hide", message = FALSE, warning = FALSE}
+library(ggplot2)
+library(sf)
+library(rnaturalearth)
+library(tidyverse)
+library(ggspatial)
+library(cartogram)
+library(ggthemes)
+library(cowplot)
+library(googleway)
+library(ggrepel)
+library(rnaturalearthdata)
+library(extrafont)
+library(extrafontdb)
+library(readr)
+```
+
+### World map
+
+Let's start by drawing a quick map of the world.
+
+``` {r world map}
+world <- ne_countries(scale = 50, returnclass = "sf") 
+world_map <- ggplot(world) +
+  geom_sf() +
+  xlab("Longitude") + ylab("Latitude") +
+    ggtitle("World map", subtitle = paste0("(", length(unique(world$name)), " countries)")) +
+  theme_dark()
+world_map
+```
+
+### Countries in Europe
+
+Now let's do a map of just countries in Europe.
+
+``` {r Europe map}
+eu_countries <- world %>%
+  filter(continent == "Europe")
+eu_map <- ggplot(eu_countries) +
+  geom_sf() + 
+  xlab("Longitude") + ylab("Latitude") +
+    ggtitle("Europe", subtitle = paste0("(", length(unique(eu_countries$sovereignt)), " countries)")) + 
+  theme_dark()
+eu_map
+```
+
+## Reprojecting map data
+I chose three projection systems: Bonne projection is an equal area map projection, Bipolar Conic projection (two conic projections used to create new maps of North and South America) and the Icosahedral Snyder Equal area (low scale and angular distortion, but there are visible interruptions).
+
+```{r}
+bonne <- "+proj=bonne +lat_1=10"
+bipolar_conic <- "+proj=bipc +ns"
+icosahedral_snyder <- "+proj=isea"
+```
+
+```{r Europe projections}
+ggplot(eu_countries) +
+geom_sf( fill = NA, color = "#A6039B") + #blade runner 2049
+  xlab("Longitude") + ylab("Latitude") +
+    ggtitle("Europe", subtitle = paste0("Bonne projection")) + 
+  coord_sf(crs = bonne) +
+  theme_dark()
+ggplot(eu_countries) +
+  geom_sf( fill = NA, color = "#025E73") +
+  xlab("Longitude") + ylab("Latitude") +
+    ggtitle("Europe", subtitle = paste0("Bipolar Conic projection")) + 
+  coord_sf(crs = bipolar_conic) +
+  theme_dark()
+ggplot(eu_countries) +
+  geom_sf( fill = NA, color = "#04D9D9") +
+    ggtitle("Europe", subtitle = paste0("Icosahedral Snyder projection")) + 
+  coord_sf(crs = icosahedral_snyder) +
+  theme_dark()
+```
+
+## Transforming coordinate systems
+
+I'll transform my data using 'st_transform()' with the Bonne projection. 
+
+
+``` {r transform Europe}
+europe_transformed <- eu_countries %>% #the name doesnt refer to the accession in the EU, just short for europe sigh
+  st_transform(crs = bonne)
+```
+
+
+``` {r}
+ggplot(europe_transformed) +
+  geom_sf() +
+  xlab("Longitude") + ylab("Latitude") +
+    ggtitle("Europe", subtitle = paste0("Bonne projection")) + 
+  theme_dark()
+```
+
+```{r}
+europe_cropped <- st_crop(europe_transformed, xmin = -2000000, xmax = 4500000,
+                                    ymin = 3000000, ymax = 7300000)
+ggplot() + geom_sf(data = europe_cropped) + theme_dark()
+```
+
+## Chloropleth map
+
+The rnaturalearth package includes GDP and population estimates for countries. I have used these variables to produce the following maps. 
+
+```{r}
+ggplot(data = europe_cropped) +
+  geom_sf(aes(fill = pop_est)) +
+  xlab("Longitude") + ylab("Latitude") +
+    ggtitle("Europe", subtitle = paste0("Population estimate")) +
+    scale_fill_viridis_c(option = "plasma", trans = "sqrt") + 
+  theme_cowplot()
+```
+
+
+```{r}
+ggplot(data = europe_cropped) +
+    geom_sf(aes(fill = gdp_md_est)) +
+  xlab("Longitude") + ylab("Latitude") +
+    ggtitle("Europe", subtitle = paste0("GDP estimate")) +
+    scale_fill_viridis_c(option = "plasma", trans = "sqrt") +
+  theme_cowplot()
+```
+
+## Cartograms
+
+### Continuous cartogram
+
+
+```{r, message = FALSE}
+options(scipen = 999)
+europe_cartogram_cont <- europe_cropped %>%
+ cartogram_cont("pop_est")
+ggplot(europe_cartogram_cont, aes(fill = gdp_md_est)) + 
+  geom_sf( color = "white") +
+  xlab("Longitude") + ylab("Latitude") +
+    ggtitle("Europe", subtitle = paste0("GDP and Population estimate")) +
+  scale_fill_viridis_c() +
+  theme_cowplot()
+```
+
+### Non-continuous cartogram
+
+A non-continuous cartogram will maintain the shapes and relative positions of states.
+
+```{r, message = FALSE}
+europe_cartogram_ncont <- europe_cropped %>%
+  cartogram_ncont("pop_est")
+ggplot(europe_cartogram_ncont, aes(fill = gdp_md_est)) +
+  geom_sf(color = NA) +
+  xlab("Longitude") + ylab("Latitude") +
+    ggtitle("Europe", subtitle = paste0("GDP and Population estimate")) +
+  scale_fill_viridis_c() +
+  theme_cowplot() +
+  theme(legend.background = element_blank())
+```
+
+
+### Dorling cartogram
+
+
+```{r, message = FALSE}
+europe_cartogram_dorling <- europe_cropped %>%
+  cartogram_dorling("pop_est")
+ggplot(europe_cartogram_dorling, aes(fill = gdp_md_est)) +
+  geom_sf(color = NA) +
+    xlab("Longitude") + ylab("Latitude") +
+    ggtitle("Europe", subtitle = paste0("GDP and Population estimate")) +
+  theme_cowplot() +
+  theme(legend.background = element_blank())
+```
+
+
+### Proportional symbol map
+
+```{r}
+europe_centeroids <- europe_cropped %>%
+  st_centroid()
+ggplot(europe_cropped) +
+  geom_sf(fill = NA, color = "gray") +
+  geom_sf(data = europe_centeroids, 
+          aes(size = gdp_md_est),
+          alpha = 0.6, color = "red") +
+      xlab("Longitude") + ylab("Latitude") +
+    ggtitle("Europe", subtitle = paste0("GDP estimate")) +
+  theme_void()  
+```
+# Balkans
+
+Note: I initially looked into the Balkans region, but I hesitated to make it central to my assignment, considering the small number of countries and the lack of range.
+
+## Balkans countries
+
+This is a map of countries in the Balkans, as defined by Encyclopædia Britannica (retrieved September 20, 2020). 
+
+```{r}
+alb <- ne_countries(sovereignt = c("Albania", "Bosnia and Herzegovina", "Bulgaria", "Croatia", "Kosovo", "Montenegro", "Macedonia", "Romania", "Republic of Serbia", "Slovenia", "Greece", "Turkey"), returnclass = "sf")
+alb_map <- ggplot(alb) +
+  geom_sf( fill = "#A7C0F2", color = "white") + 
+  xlab("Longitude") + ylab("Latitude") +
+    ggtitle("The Balkans Peninsula", subtitle = paste0("(", length(unique(alb$sovereignt)), " countries)")) + 
+  theme_cowplot()
+alb_map +
+  annotation_scale()
+```
+
+## Reprojecting map data
+
+I chose three projection systems: Balkans zone 6 that is relatively accurate (both in shape and distance), Bipolar Conic projection (two conic projections used to create new maps of North and South America) and the Icosahedral Snyder Equal area (low scale and angular distortion, but there are visible interruptions). 
+
+
+``` {r define crs options}
+balkans_zone_6 <- "+proj=tmerc +lat_0=0 +lon_0=18 +k=0.9999 +x_0=6500000 +y_0=0 +ellps=bessel +units=m +no_defs"
+bipolar_conic <- "+proj=bipc +ns"
+icosahedral_snyder <- "+proj=isea"
+```
+
+``` {r Balkans projections}
+ggplot(alb) +
+  geom_sf( fill = NA, color = "#A6039B") + #blade runner 2049
+  xlab("Longitude") + ylab("Latitude") +
+    ggtitle("The Balkans Peninsula", subtitle = paste0("Balkans Zone 6 projection")) + 
+  coord_sf(crs = balkans_zone_6) +
+  theme_bw()
+ggplot(alb) +
+  geom_sf( fill = NA, color = "#025E73") +
+  xlab("Longitude") + ylab("Latitude") +
+    ggtitle("The Balkans Peninsula", subtitle = paste0("Bipolar Conic projection")) + 
+  coord_sf(crs = bipolar_conic) +
+  theme_bw()
+ggplot(alb) +
+  geom_sf( fill = NA, color = "#04D9D9") +
+    ggtitle("The Balkans Peninsula", subtitle = paste0("Icosahedral Snyder projection")) + 
+  coord_sf(crs = icosahedral_snyder) +
+  theme_bw()
+```
+
+## Transforming coordinate systems
+
+I'll transform my data using 'st_transform()' with the Balkans Zone 6 projection system. 
+
+
+``` {r transform the Balkans}
+balkans_transformed <- alb %>%
+  st_transform(crs = balkans_zone_6)
+```
+
+``` {r Alexa show the Balkans again}
+ggplot(balkans_transformed) +
+  geom_sf() +
+  xlab("Longitude") + ylab("Latitude") +
+    ggtitle("The Balkans Peninsula", subtitle = paste0("Balkans Zone 6 projection")) + 
+  theme_economist_white()
+```
+
+## Chloropleth map
+
+The rnaturalearth package includes GDP and population estimates for countries. I have used these variables to produce the following maps. 
+
+
+```{r}
+ggplot(data = balkans_transformed) +
+    geom_sf(aes(fill = pop_est)) +
+  xlab("Longitude") + ylab("Latitude") +
+    ggtitle("The Balkans Peninsula", subtitle = paste0("Population estimate")) +
+    scale_fill_viridis_c(option = "plasma", trans = "sqrt") + 
+  theme_cowplot()
+```
+
+```{r}
+ggplot(data = balkans_transformed) +
+    geom_sf(aes(fill = gdp_md_est)) +
+  xlab("Longitude") + ylab("Latitude") +
+    ggtitle("The Balkans Peninsula", subtitle = paste0("GDP estimate")) +
+    scale_fill_viridis_c(option = "plasma", trans = "sqrt")
+```
+
+## Cartograms
+
+### Continuous cartogram
+
+```{r, message = FALSE}
+options(scipen = 999)
+balkans_cartogram_cont <- balkans_transformed %>%
+ cartogram_cont("gdp_md_est")
+ggplot(balkans_cartogram_cont, aes(fill = pop_est)) + 
+  geom_sf( color = "white") +
+  xlab("Longitude") + ylab("Latitude") +
+    ggtitle("The Balkans Peninsula", subtitle = paste0("GDP and Population estimate")) +
+  scale_fill_viridis_c() +
+  theme_classic()
+```
+
+### Non-continuous cartogram
+
+```{r, message = FALSE}
+balkans_cartogram_ncont <- balkans_transformed %>%
+  cartogram_ncont("gdp_md_est")
+ggplot(balkans_cartogram_ncont, aes(fill = pop_est)) +
+  geom_sf(color = NA) +
+  xlab("Longitude") + ylab("Latitude") +
+    ggtitle("The Balkans Peninsula", subtitle = paste0("GDP and Population estimate")) +
+  scale_fill_viridis_c() +
+  theme_cowplot() +
+  theme(legend.background = element_blank())
+```
+
+### Dorling cartogram
+
+```{r, message = FALSE}
+balkans_cartogram_dorling <- balkans_transformed %>%
+  cartogram_dorling("pop_est")
+ggplot(balkans_cartogram_dorling, aes(fill = gdp_md_est)) +
+  geom_sf(color = NA) +
+    xlab("Longitude") + ylab("Latitude") +
+    ggtitle("The Balkans Peninsula", subtitle = paste0("GDP and Population estimate")) +
+  theme_cowplot() +
+  theme(legend.background = element_blank())
+```
+
+## Proportional symbol map
+
+```{r}
+balkans_centeroids <- balkans_transformed %>%
+  st_centroid()
+ggplot(balkans_transformed) +
+  geom_sf(fill = NA, color = "gray") +
+  geom_sf(data = balkans_centeroids, 
+          aes(size = gdp_md_est),
+          alpha = 0.6, color = "red") +
+      xlab("Longitude") + ylab("Latitude") +
+    ggtitle("The Balkans Peninsula", subtitle = paste0("GDP estimate")) +
+  theme_void()  
+```
+
