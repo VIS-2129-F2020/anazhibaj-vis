@@ -1,0 +1,362 @@
+# Assignment 3
+---
+author: "Ana Zhibaj"
+date: "who even knows anymore honestly"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r loading libraries, message=FALSE}
+library(sf)
+library(tidyverse)
+library(ggthemes)
+library(ggspatial)
+library(units)
+library(nngeo)
+library(wesanderson)
+library(extrafont)
+library(extrafontdb)
+library(units)
+```
+
+I pulled climate vulnerability (a group of variables that measure how vulnerable a tract is to climate crisis), open spaces, trees, and hubway stations from analyze Boston website.
+
+```{r pulling data from online sources}
+hubwaystations <- st_read("http://bostonopendata-boston.opendata.arcgis.com/datasets/ee7474e2a0aa45cbbdfe0b747a5eb032_0.kml?outSR=%7B%22latestWkid%22%3A3857%2C%22wkid%22%3A102100%7D", 
+                  quiet = TRUE)
+trees <- st_read("http://bostonopendata-boston.opendata.arcgis.com/datasets/ce863d38db284efe83555caf8a832e2a_1.kml", 
+                 quiet = TRUE) 
+open_space <- st_read("http://bostonopendata-boston.opendata.arcgis.com/datasets/2868d370c55d4d458d4ae2224ef8cddd_7.kml", 
+                 quiet = TRUE)
+climate_vulnerability <- st_read("200929_climatevulnerability.shp", 
+                   quiet = TRUE) 
+water <- st_read("http://bostonopendata-boston.opendata.arcgis.com/datasets/2b3c0fa13b1c468eb702a3645fcc6bcb_5.kml", 
+                 quiet = TRUE)
+```
+
+## Transforming the data
+
+I transformed the maps using the projection system.
+
+```{r transform maps}
+MA_state_plane <- "+proj=lcc +lat_1=41.71666666666667 +lat_2=42.68333333333333 +lat_0=41 +lon_0=-71.5 +x_0=200000 +y_0=750000 +ellps=GRS80 +units=m +no_defs"
+hubwaystations <- hubwaystations %>%
+  st_transform(MA_state_plane)
+trees <- trees %>%
+  st_transform(MA_state_plane)
+open_space <- open_space %>%
+  st_transform(MA_state_plane)
+water <- water %>%
+  st_transform(MA_state_plane)
+climate_vulnerability <- climate_vulnerability %>%
+  st_transform(MA_state_plane)
+```
+
+I'll draw a quick map now to see how the data look.
+
+```{r draw initial map} 
+ggplot(water) +
+  geom_sf(data= climate_vulnerability, fill = "#f0efef", color = NA) +
+  geom_sf(data = open_space, color = "#41ae76", size = 0.01) +
+  geom_sf(fill = "#d0d3d4", color = NA) +
+  geom_sf(data = trees, color = "#bae4bc", size = 0.005) +
+  geom_sf(data = hubwaystations, color = "#0868ac", size = 0.01) +
+  theme_map() +
+  annotation_scale()
+```
+
+## Creating a buffer
+
+I'll create a 300-m radius buffer around hubway stations. 
+
+```{r create initial hubway buffer}
+hubwaystations_bf <- st_buffer(hubwaystations, dist = 300) %>%
+  st_union()
+ggplot(hubwaystations_bf) +
+  geom_sf() +
+  theme_map()
+```
+
+## Subsetting points with a polygon
+
+How many trees are there on a 300-m radius from the hubway stations?
+
+```{r subsetting trees in hubway stations}
+hubwaystations_trees <- trees[hubwaystations_bf,]
+  
+ggplot(hubwaystations_trees) +
+  geom_sf() +
+  geom_sf(data = hubwaystations_trees, 
+          color = "#bae4bc", 
+          size = 0.01) +
+  theme_map()
+```
+
+
+```{r}
+trees <- trees %>%
+  st_join(hubwaystations_trees) %>%
+  mutate(by_hubwaystations = !is.na(Name.y))
+```
+
+Now we can calculate how many trees are within 300 meters of a hubway station:
+
+```{r}
+n_hubwaystations_trees <- sum(trees$by_hubwaystations)
+n_hubwaystations_trees
+```
+
+And what percent of all trees does this represent?
+
+```{r}
+n_trees <- length(trees$by_hubwaystations)
+pct_hubwst_trees <-n_hubwaystations_trees / n_trees
+pct_hubwst_trees
+```
+
+About 29 percent of all trees in Boston are within 300 meters of a hubway station. I'll include a note about the number and percent of trees near hubway stations.
+
+```{r}
+left_side  <- st_bbox(trees)$xmin
+top_side <- st_bbox(trees)$ymax
+ggplot(water) +
+  geom_sf(fill = "#d0d3d4", color = NA) +
+  geom_sf(data = trees, size = 0.01,
+          aes(color = by_hubwaystations)) +
+  scale_color_manual(values = c("#bae4bc", "#005824"),
+          name = "Boston Trees\nby distance to a hubway station", 
+          labels = c("No hubway stations within 300 m",
+                     "Hubway stations within 300 m")) +
+  annotation_scale(location = "br") +
+  annotation_north_arrow(location = "tr",
+                         style = north_arrow_minimal()) +
+  annotate(geom = "text", x = left_side, 
+           y = top_side, 
+           label = paste("Of the ", 
+                         prettyNum(n_trees, big.mark = ","),
+                         " trees in Boston\n", 
+                         prettyNum(n_hubwaystations_trees, big.mark = ","),
+                         " (", 
+                         prettyNum(100*pct_hubwst_trees, digits = 0),
+                         "%) are within 300\nmeters of a hubway station.",
+                         sep = ""),
+           hjust = 0, vjust = 0, size = 3) +
+  theme_map() +
+  theme(panel.background = element_rect(fill = "white"),
+        legend.background = element_rect(fill = alpha("white", 0.5), 
+                                         color = "gray"))
+```
+
+
+## Counting points in a polygon
+
+What if I wanted to know how many trees are in Boston neighborhoods that are particularly vulnerable to the climate crisis? First, I'll filter the climate vulnerability indicators and see how they compare to green and open space access. 
+
+
+```{r}
+max_climate_vulnerability <- climate_vulnerability %>%
+  filter(Low_to_No > 1000) %>%
+  select(FID_1, GEOID10, Low_to_No) # I selected the tracts with more than 1000 people that have reported low to no income. I'll compare how this relates to the access they have to open space and trees. 
+```
+
+
+```{r}
+max_climate_vulnerability <- max_climate_vulnerability %>%
+  mutate(num_trees = lengths(st_covers(max_climate_vulnerability, trees)))
+ggplot(max_climate_vulnerability) +
+  geom_sf(data = water, fill = "lightblue", color = NA) +
+  geom_sf(data= climate_vulnerability, fill = "#f0efef", color = NA) +
+  geom_sf(color = NA, 
+          aes(fill = num_trees)) +
+  scale_fill_viridis_c(name = "Boston neighborhoods most vulnerable to \nclimate crisis \nby number of trees",
+                       breaks = breaks <- seq(0, 30000, by = 5000),
+                       labels = paste(prettyNum(breaks, big.mark = ","),
+                                      "trees")) +
+  annotation_scale(location = "br") +
+  annotation_north_arrow(location = "tr",
+                         style = north_arrow_minimal()) +
+theme_map() +
+  theme(legend.background = element_rect(fill = alpha("white", 0.5), 
+                                         color = "gray"))
+```
+
+
+## Calculating areas and densities
+
+Density of trees in climate-vulnerable neighborhoods. 
+
+```{r}
+max_climate_vulnerability <- max_climate_vulnerability %>%
+  mutate(area = set_units(st_area(max_climate_vulnerability), km^2)) %>%
+  mutate(tree_dens = as.numeric(num_trees / area))
+ggplot(max_climate_vulnerability) +
+  geom_sf(data = water, fill = "lightblue", color = NA) +
+  geom_sf(data= climate_vulnerability, fill = "#f0efef", color = NA) +
+  geom_sf(color = NA, 
+          aes(fill = tree_dens)) +
+    scale_fill_viridis_c(name = 
+                           "Boston neighborhoods\nclimate vulnerability\nby tree density",
+                       breaks = breaks <- seq(0, 4000, by = 500),
+                       labels = paste(prettyNum(breaks, big.mark = ","),
+                                      "trees per square km")) +
+  annotation_scale(location = "br") +
+  annotation_north_arrow(location = "tr",
+                         style = north_arrow_minimal()) +
+theme_map() +
+  theme(legend.position = "right",
+    legend.background = element_rect(fill = alpha("white", 0.5), 
+                                         color = "gray"))
+```
+
+## Finding the closest point
+
+The average distance of a tree from the hubway station. 
+
+```{r, message=FALSE, results='hide'}
+hubwaystations <- hubwaystations %>%
+  mutate(tree_dist = st_nn(hubwaystations, trees, 
+                           returnDist = TRUE)$dist) %>%
+  mutate(tree_dist = as.numeric(tree_dist))
+```
+
+Now I can calculate the average distance from a hubway station to the nearest tree.
+
+```{r}
+avg_tree_dist <- mean(hubwaystations$tree_dist)
+avg_tree_dist
+```
+
+
+```{r}
+right_side <- st_bbox(hubwaystations)$xmax
+left_side  <- st_bbox(hubwaystations)$xmin
+top_side <- st_bbox(hubwaystations)$ymax
+bottom_side <- st_bbox(hubwaystations)$ymin
+ggplot(water) +
+  geom_sf(data= climate_vulnerability, fill = "#f0efef", color = NA) +
+  geom_sf(fill = "lightblue", color = NA) +
+  geom_sf(data = hubwaystations, size = 0.1,
+          aes(color = tree_dist)) +
+  coord_sf(xlim = c(left_side, right_side), 
+           ylim = c(bottom_side, top_side), expand = FALSE) +
+  scale_color_viridis_c(name = 
+                          "Boston Hubway Stations\nby distance to a tree") +
+  annotation_scale(location = "br") +
+  annotation_north_arrow(location = "tr",
+                         style = north_arrow_minimal()) +
+  annotate(geom = "text", x = left_side + 300, 
+           y = top_side - 750, 
+           label = paste("On average, a hubway station\nis ", 
+                         prettyNum(avg_tree_dist, digits = 3),
+                         " meters from a tree.",
+                         sep = ""),
+           hjust = 0, vjust = 0, size = 3) +
+  theme_map() +
+  theme(panel.background = element_rect(fill = "white"),
+        legend.background = element_rect(fill = alpha("white", 0.5), 
+                                         color = "gray"))
+```
+
+## Identifying overlapping polygons
+
+I want to map how public space is distributed in neighborhoods most vulnerable by the climate crisis. 
+
+```{r}
+max_climate_vulnerability <- max_climate_vulnerability %>%
+  mutate(num_openspace = lengths(st_overlaps(max_climate_vulnerability, open_space))) %>%
+  mutate(has_openspace = num_openspace > 0)
+```
+
+How many neighborhoods vulnerable by the climate crisis have access to open spaces?
+
+```{r}
+n_os_cvuln <- sum(max_climate_vulnerability$has_openspace)
+n_os_cvuln
+```
+
+```{r}
+left_side  <- st_bbox(open_space)$xmin
+top_side <- st_bbox(open_space)$ymax
+ggplot(open_space) +
+  geom_sf(data = water, fill = "lightblue", color = NA) +
+  geom_sf(data= climate_vulnerability, fill = "#f0efef", color = NA) +
+  geom_sf(fill = "#fdcc8a", color = NA) +
+  geom_sf(data = max_climate_vulnerability,
+          aes(fill = has_openspace)) +
+  scale_fill_manual(values = c("cornsilk1", "darkseagreen1"),
+          name = "Boston Neighborhoods\nby access to open space", 
+          labels = c("Neighborhood without\naccess to open space",
+                     "Neighborhood with \naccess to open space")) +
+  annotation_scale(location = "br") +
+  annotation_north_arrow(location = "tr",
+                         style = north_arrow_minimal()) +
+  annotate(geom = "text", x = left_side, 
+           y = top_side - 1000, 
+           label = paste(n_os_cvuln ,
+                         "of Boston's", 
+                         length(max_climate_vulnerability$FID_1),
+                         "vulernable neighborhoods have access to \n", 
+                         "open space."),
+           hjust = 0, vjust = 0, size = 3) +
+  theme_map() +
+  theme(panel.background = element_rect(fill = "white"),
+        legend.background = element_rect(fill = alpha("white", 0.5), 
+                                         color = "gray"))
+```
+
+## Hubway stations in climate vulnerable neighborhoods
+
+Now, I'll plot how many hubway stations there are in climate vulnerable neighborhoods. 
+
+```{r}
+max_climvuln_hub <- max_climate_vulnerability %>%
+  mutate(num_hubscv = lengths(st_covers(max_climate_vulnerability, hubwaystations)))
+ggplot(max_climvuln_hub) +
+  geom_sf(data = water, fill = "lightblue", color = NA) +
+  geom_sf(data= climate_vulnerability, fill = "#f0efef", color = NA) +
+  geom_sf(color = NA, 
+          aes(fill = num_hubscv)) +
+  scale_fill_viridis_c(name = "Boston neighborhoods \nmost climate vulnerable \nby number of hubway stations",
+                       breaks = breaks <- seq(0, 10, by = 2),
+                       labels = paste(prettyNum(breaks, big.mark = ","),
+                                      "stations")) +
+  annotation_scale(location = "br") +
+  annotation_north_arrow(location = "tr",
+                         style = north_arrow_minimal()) +
+theme_map() +
+  theme(legend.background = element_rect(fill = alpha("white", 0.5), 
+                                         color = "gray"))
+```
+
+## Calculating areas and densities
+
+Density of hubway stations in climate-vulnerable neighborhoods. 
+
+```{r}
+max_climvuln_hub <- max_climvuln_hub %>%
+  mutate(area = set_units(st_area(max_climvuln_hub), km^2)) %>%
+  mutate(hub_dens = as.numeric(num_hubscv / area))
+ggplot(max_climvuln_hub) +
+  geom_sf(data = water, fill = "lightblue", color = NA) +
+  geom_sf(data= climate_vulnerability, fill = "#f0efef", color = NA) +
+  geom_sf(color = NA, 
+          aes(fill = tree_dens)) +
+    scale_fill_viridis_c(name = 
+                           "Boston neighborhoods\nclimate vulnerability\nby hubway station density",
+                       breaks = breaks <- seq(0, 10, by = 2),
+                       labels = paste(prettyNum(breaks, big.mark = ","),
+                                      "bike stations per square km")) +
+  annotation_scale(location = "br") +
+  annotation_north_arrow(location = "tr",
+                         style = north_arrow_minimal()) +
+theme_map() +
+  theme(legend.position = "right",
+    legend.background = element_rect(fill = alpha("white", 0.5), 
+                                         color = "gray"))
+```
+
+
+
