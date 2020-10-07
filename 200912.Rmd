@@ -2,7 +2,6 @@
 
 ---
 author: "Ana Zhibaj"
-date: "9/12/2020"
 output: html_document
 ---
 
@@ -13,6 +12,9 @@ output: html_document
 library(ggplot2)
 library(tidyverse)
 library(viridis)
+library(tidycensus)
+library(wesanderson)
+library(ggthemes)
 ```
 
 ##Dataset 
@@ -85,45 +87,62 @@ AT_tracts <- get_acs(geography = "tract", variables = vars,
               select(GEOID, pct_rent_occ, pct_bach, pct_eng,
                      majority_inc, med_age, majority_race_eth, tot_pop)
 ```
-##Plotting race/ethnicity
-
-I will now plot population, percent of population that speak english, majority race/ethnicity, and income level. 
+##Plotting median age
+The first visualization is a histogram of the median age. 
 
 ```{r}
-ggplot(AT_tracts, 
-       aes(x = pct_rent_occ,
-           y = med_age,
-           size = tot_pop,
-           shape = majority_inc,
-           color = majority_race_eth,
-           alpha = pct_eng)) +
-  geom_point() +
-  scale_size_continuous(name = "Tract population") +
-  scale_x_continuous(name = "Percent of renter ocupied housing units",
-                     breaks = seq(0, 1, by = 0.1),
-                     labels = paste(seq(0, 100, by = 10), "%", sep = "")) +
-  scale_y_continuous(name = "Median age within tract",
-                     breaks = seq(10, 80, by = 10)) +
-  scale_color_discrete(name = "Majority race/ethnicity",
-                       labels = c("Hispanic",
-                                  "Non-Hispanic Asian",
-                                  "Non-Hispanic White",
-                                  "Non-Hispanic Black", 
-                                  "No Majority")) +
-  scale_alpha_continuous(name = "Percent of individuals that only speak English in tract") +
-  scale_shape(name = element_blank(), 
-              labels = c("Income Below $25,000", "Income Above $25,000")) +
-  theme_classic() +
-  theme(legend.key.size = unit(0.1, "cm"))
+AT_tracts %>%
+  ggplot(aes(med_age))+
+  geom_histogram(
+    fill = "#A64B6C"
+  ) + 
+  labs(
+    x='Median Age', 
+    y= 'Count',
+    title = 'Median Age',
+    subtitle = 'Los Angeles County'
+  )+
+  theme_economist_white() 
 ```
-##Plotting percent rate occupied units
+
+```{r}
+AT_tracts %>%
+  ggplot(aes(med_age))+
+  geom_density(fill = "#8FAFD9") + 
+  labs(
+    x='Median Age', 
+    y= 'Count',
+    title = 'Median age density plot'
+  )+
+  theme_classic()
+```
+
+##Plotting race/ethnicity and English speaking households
+
+```{r}
+ggplot(AT_tracts,
+  aes(majority_race_eth,pct_eng)
+        )+
+  geom_bar(stat="identity")+   
+  coord_polar("x", start = 0) +
+  labs(
+    x= NULL,
+    y='Median Age',
+    title="Race/Ethnicity \nEnglish"
+  ) +
+  theme_economist() ##During our breakout room discussions, I learned a lot about themes from Jenny. I got the breakline from Whytne, otherwise my script would just go on and on. 
+```
+
+
 
 ```{r}
 ggplot(AT_tracts, 
        aes(x = pct_rent_occ,
            y = med_age,
            color = majority_race_eth)) +
-  geom_point() +
+  geom_point(size = 2) +
+  geom_jitter() + 
+  geom_smooth(method = lm, formula = y ~ splines::bs(x, 3), se = FALSE) +
   scale_x_continuous(name = "Percent of renter occupied units",
                      breaks = seq(0, 1, by = 0.1),
                      labels = paste(seq(0, 100, by = 10), "%", sep = "")) +
@@ -135,8 +154,15 @@ ggplot(AT_tracts,
                                   "Non-Hispanic White",
                                   "Non-Hispanic Black", 
                                   "No Majority")) +
+  scale_color_manual(values=c("#A64B6C", "#8FAFD9", "#1A3338", "#7E8A7C", "#BF9056")) +
+  labs(
+    x='Percent of rent occupied units', 
+    y= 'Median age within tract',
+    title = 'Median age density plot'
+  )+
   theme_classic() 
 ```
+
 ##Plotting percent rate occupied units and major race/ethnicity
 
 ```{r}
@@ -155,9 +181,15 @@ ggplot(AT_tracts,
     scale_fill_discrete(name = "Majority race/ethnicity",
                        breaks=c("hispainc", "nh_black", "nh_white", "None"),
                          labels=c("Hispanic", "Non-Hispanic Asian", 
-                                  "Non-Hispanic White", "Non-Hispanic Black"))+
-  theme_classic()
+                                  "Non-Hispanic White", "Non-Hispanic Black")) +
+  labs(
+    x='Majority race/ethnicity', 
+    y= 'Percent of renter occupied housing units',
+    title = 'Race/ethnicity and % of renter occupied \nhousing units'
+  )+
+  theme_few()
 ```
+
 ##Heat map of income and race
 
 ```{r}
@@ -173,10 +205,17 @@ ggplot(AT_tracts, aes(x = majority_race_eth, y = majority_inc, fill = pct_rent_o
                        labels = c("Below $25,000",
                                   "Above $25,000",
                                   "No data")) +
-      scale_fill_distiller(palette = "RdPu") +
       labs(fill = "Percent of renter occupied units") + 
-      theme_minimal()
+  labs(
+    x='Majority race/ethnicity', 
+    y= 'Income',
+    title = 'Race/ethnicity and income'
+  )+
+  theme(axis.text.x = element_text(angle = 90))
+      theme_grey()
 ```
+
+
 ##Scatterplot of percent with bachelor’s degree and percent of individuals that only speak English
 
 ```{r}
@@ -190,16 +229,27 @@ ggplot(AT_tracts, aes(x=pct_eng, y=pct_bach, size = tot_pop, fill = majority_rac
                      breaks = seq(0, 1, by = 0.1),
                      labels = paste(seq(0, 100, by = 10), "%", sep = "")) +
     labs(fill = "Total Population") +
-    theme_light() 
+  labs(
+    x='Percent of individuals that only speak English', 
+    y= 'Percent with bachelors degree',
+    title = 'English and bachelors degree'
+  )+
+    theme_solarized_2() 
 ```
+
 ##Violin plots for language and major race/ethnicity
+This time, I used the color palette from an Anderson movie that is very dear to me. 
 
 ```{r}
 ggplot(AT_tracts, aes(x = majority_race_eth, y = pct_eng, fill = majority_race_eth)) +
     geom_violin(width=2.1, size=0.2, alpha = 0.75) +
-    scale_fill_viridis(discrete=TRUE) +
-    scale_color_viridis(discrete=TRUE) +
-    theme_minimal()
+    scale_fill_manual(values = wes_palette("Darjeeling2", n = 3)) + 
+labs(
+    x='Majority race/ethnicity', 
+    y= 'Language',
+    title = 'Language and major race/ethnicity'
+  )+
+    theme_fivethirtyeight()
 ```
 
 ##Box percent with a bachelor's degree and majority income
@@ -207,17 +257,25 @@ ggplot(AT_tracts, aes(x = majority_race_eth, y = pct_eng, fill = majority_race_e
 ```{r}
  ggplot(AT_tracts, aes(x=majority_inc, y=pct_eng, fill = majority_inc)) +
     geom_boxplot() +
-    scale_fill_viridis(discrete = TRUE, alpha=0.6, option="B") +
-    geom_jitter(color="black", size=0.4, alpha=0.9) +
+    scale_fill_viridis(discrete = TRUE, alpha=0.7, option="B") +
+    geom_jitter(color="#D1262E", size=0.8, alpha=0.9) +
     scale_y_continuous(name = "Percent with bachelor's degree",
                      breaks = seq(0, 1, by = 0.1),
                      labels = paste(seq(0, 100, by = 10), "%", sep = "")) +
     scale_x_discrete(name = "Majority income",
                        labels = c("Below $25,000",
                                   "Above $25,000",
-                                  "No data"))
+                                  "No data")) + 
+  scale_fill_manual(values = wes_palette("Moonrise3", n = 3)) +
+  labs(
+    x='Majority income', 
+    y= "Percent with bachelor's degree",
+    title = "Bachelor's degree and income"
+  )+
+  theme_classic()
 ```
-##Area chart of individuals that only speak English
+
+##DEnsity chart of individuals that only speak English
 
 ```{r}
 ggplot(AT_tracts, aes(x=pct_eng)) +
@@ -225,13 +283,19 @@ ggplot(AT_tracts, aes(x=pct_eng)) +
   scale_x_continuous(name = "Percent of individuals that only speak English",
                      breaks = seq(0, 1, by = 0.1),
                      labels = paste(seq(0, 100, by = 10), "%", sep = "")) +
-  theme_minimal()
+  scale_fill_manual(values = wes_palette("Darjeeling1", n = 1)) +
+  labs(
+    x='Percent of individuals that only speak English', 
+    y= NULL,
+    title = "Density plot for language"
+  )+
+  theme_classic()
 ```
 ##Major race/ethnicity and English
 
 ```{r}
 ggplot(AT_tracts, aes(x=majority_race_eth, y=pct_eng)) +
-  geom_point() + 
+  geom_point(color = "#972D15", size = 2) + 
   geom_segment( aes(x=majority_race_eth, xend=majority_race_eth, y=0, yend=pct_eng)) + 
   scale_y_continuous(name = "Percent of individuals that only speak English",
                      breaks = seq(0, 1, by = 0.1),
@@ -242,7 +306,8 @@ ggplot(AT_tracts, aes(x=majority_race_eth, y=pct_eng)) +
                                   "Non-H White",
                                   "Non-H Black", 
                                   "No Majority")) +
-  coord_flip()
+  coord_flip() +
+theme_classic()
 ```
 ##Stacked bar chart of majority income and percent that only speak English
 
@@ -254,6 +319,13 @@ ggplot(AT_tracts, aes(x=majority_inc, y=pct_eng, fill = majority_race_eth)) +
                        labels = c("Below $25,000",
                                   "Above $25,000",
                                   "No data")) +
+  scale_fill_manual(values = wes_palette("Darjeeling1", n = 5)) +
+  labs(
+    x='Majority income', 
+    y= "Percent of individuals that only speak English",
+    title = "Income and language"
+  )+
+  coord_flip() +
   theme_classic()
 ```
 

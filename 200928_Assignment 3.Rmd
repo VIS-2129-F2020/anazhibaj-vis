@@ -153,7 +153,7 @@ ggplot(water) +
 
 ## Counting points in a polygon
 
-What if I wanted to know how many trees are in Boston neighborhoods that are particularly vulnerable to the climate crisis? First, I'll filter the climate vulnerability indicators and see how they compare to green and open space access. 
+What if I wanted to know how many trees are in Boston neighborhoods that are particularly vulnerable to the climate crisis? First, I'll filter the climate vulnerability variables to show the tracts the most affected and see how they compare to green and open space access. 
 
 
 ```{r}
@@ -161,6 +161,7 @@ max_climate_vulnerability <- climate_vulnerability %>%
   filter(Low_to_No > 1000) %>%
   select(FID_1, GEOID10, Low_to_No) # I selected the tracts with more than 1000 people that have reported low to no income. I'll compare how this relates to the access they have to open space and trees. 
 ```
+
 
 
 ```{r}
@@ -171,8 +172,8 @@ ggplot(max_climate_vulnerability) +
   geom_sf(data= climate_vulnerability, fill = "#f0efef", color = NA) +
   geom_sf(color = NA, 
           aes(fill = num_trees)) +
-  scale_fill_viridis_c(name = "Boston neighborhoods most vulnerable to \nclimate crisis \nby number of trees",
-                       breaks = breaks <- seq(0, 30000, by = 5000),
+  scale_fill_viridis_c(name = "Boston neighborhoods \nmost vulnerable to \nclimate crisis \nby number of trees",
+                       breaks = breaks <- seq(0, 6000, by = 500),
                        labels = paste(prettyNum(breaks, big.mark = ","),
                                       "trees")) +
   annotation_scale(location = "br") +
@@ -199,7 +200,7 @@ ggplot(max_climate_vulnerability) +
           aes(fill = tree_dens)) +
     scale_fill_viridis_c(name = 
                            "Boston neighborhoods\nclimate vulnerability\nby tree density",
-                       breaks = breaks <- seq(0, 4000, by = 500),
+                       breaks = breaks <- seq(0, 6000, by = 500),
                        labels = paste(prettyNum(breaks, big.mark = ","),
                                       "trees per square km")) +
   annotation_scale(location = "br") +
@@ -208,6 +209,27 @@ ggplot(max_climate_vulnerability) +
 theme_map() +
   theme(legend.position = "right",
     legend.background = element_rect(fill = alpha("white", 0.5), 
+                                         color = "gray"))
+```
+I'm plotting a map counting trees in open spaces. 
+
+```{r}
+open_space <- open_space %>%
+  mutate(num_treesos = lengths(st_covers(open_space, trees)))
+ggplot(open_space) +
+  geom_sf(data = water, fill = "lightblue", color = NA) +
+  geom_sf(data= climate_vulnerability, fill = "#f0efef", color = NA) +
+  geom_sf(color = NA, 
+          aes(fill = num_treesos)) +
+  scale_fill_viridis_c(name = "Open spaces \nby number of trees",
+                       breaks = breaks <- seq(0, 4000, by = 500),
+                       labels = paste(prettyNum(breaks, big.mark = ","),
+                                      "trees")) +
+  annotation_scale(location = "br") +
+  annotation_north_arrow(location = "tr",
+                         style = north_arrow_minimal()) +
+theme_map() +
+  theme(legend.background = element_rect(fill = alpha("white", 0.5), 
                                          color = "gray"))
 ```
 
@@ -262,7 +284,7 @@ ggplot(water) +
 
 ## Identifying overlapping polygons
 
-I want to map how public space is distributed in neighborhoods most vulnerable by the climate crisis. 
+I want to map how public space is distributed in tracts most vulnerable by the climate crisis. 
 
 ```{r}
 max_climate_vulnerability <- max_climate_vulnerability %>%
@@ -270,7 +292,7 @@ max_climate_vulnerability <- max_climate_vulnerability %>%
   mutate(has_openspace = num_openspace > 0)
 ```
 
-How many neighborhoods vulnerable by the climate crisis have access to open spaces?
+How many tracts vulnerable to the climate crisis have access to open spaces?
 
 ```{r}
 n_os_cvuln <- sum(max_climate_vulnerability$has_openspace)
@@ -287,9 +309,9 @@ ggplot(open_space) +
   geom_sf(data = max_climate_vulnerability,
           aes(fill = has_openspace)) +
   scale_fill_manual(values = c("cornsilk1", "darkseagreen1"),
-          name = "Boston Neighborhoods\nby access to open space", 
-          labels = c("Neighborhood without\naccess to open space",
-                     "Neighborhood with \naccess to open space")) +
+          name = "Boston tracts\nby access to open space", 
+          labels = c("Tracts without\naccess to open space",
+                     "Tracts with \naccess to open space")) +
   annotation_scale(location = "br") +
   annotation_north_arrow(location = "tr",
                          style = north_arrow_minimal()) +
@@ -298,7 +320,7 @@ ggplot(open_space) +
            label = paste(n_os_cvuln ,
                          "of Boston's", 
                          length(max_climate_vulnerability$FID_1),
-                         "vulernable neighborhoods have access to \n", 
+                         "vulernable tracts have access to \n", 
                          "open space."),
            hjust = 0, vjust = 0, size = 3) +
   theme_map() +
@@ -307,9 +329,9 @@ ggplot(open_space) +
                                          color = "gray"))
 ```
 
-## Hubway stations in climate vulnerable neighborhoods
+## Hubway stations in climate vulnerable tracts
 
-Now, I'll plot how many hubway stations there are in climate vulnerable neighborhoods. 
+Now, I'll plot how many hubway stations there are in climate vulnerable tracts. 
 
 ```{r}
 max_climvuln_hub <- max_climate_vulnerability %>%
@@ -319,7 +341,7 @@ ggplot(max_climvuln_hub) +
   geom_sf(data= climate_vulnerability, fill = "#f0efef", color = NA) +
   geom_sf(color = NA, 
           aes(fill = num_hubscv)) +
-  scale_fill_viridis_c(name = "Boston neighborhoods \nmost climate vulnerable \nby number of hubway stations",
+  scale_fill_viridis_c(name = "Boston tracts \nmost climate vulnerable \nby number of hubway stations",
                        breaks = breaks <- seq(0, 10, by = 2),
                        labels = paste(prettyNum(breaks, big.mark = ","),
                                       "stations")) +
@@ -333,7 +355,7 @@ theme_map() +
 
 ## Calculating areas and densities
 
-Density of hubway stations in climate-vulnerable neighborhoods. 
+Density of hubway stations in climate-vulnerable tracts.
 
 ```{r}
 max_climvuln_hub <- max_climvuln_hub %>%
@@ -343,10 +365,10 @@ ggplot(max_climvuln_hub) +
   geom_sf(data = water, fill = "lightblue", color = NA) +
   geom_sf(data= climate_vulnerability, fill = "#f0efef", color = NA) +
   geom_sf(color = NA, 
-          aes(fill = tree_dens)) +
+          aes(fill = hub_dens)) +
     scale_fill_viridis_c(name = 
-                           "Boston neighborhoods\nclimate vulnerability\nby hubway station density",
-                       breaks = breaks <- seq(0, 10, by = 2),
+                           "Boston tracts\nclimate vulnerability\nby hubway station density",
+                       breaks = breaks <- seq(0, 10, by = 1),
                        labels = paste(prettyNum(breaks, big.mark = ","),
                                       "bike stations per square km")) +
   annotation_scale(location = "br") +

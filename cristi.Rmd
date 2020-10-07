@@ -1,0 +1,123 @@
+---
+title: "Cristina"
+author: "Ana Zhibaj"
+date: "10/3/2020"
+output: html_document
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r loading libraries, message=FALSE}
+library(sf)
+library(tidyverse)
+library(ggthemes)
+library(ggspatial)
+library(units)
+library(nngeo)
+library(wesanderson)
+library(extrafont)
+library(extrafontdb)
+library(units)
+```
+
+```{r, message=FALSE}
+nhoods <- st_read("http://bostonopendata-boston.opendata.arcgis.com/datasets/3525b0ee6e6b427f9aab5d0a1d0a1a28_0.kml?outSR=%7B%22latestWkid%22%3A2249%2C%22wkid%22%3A102686%7D", quiet=TRUE)
+
+trees <- st_read("http://bostonopendata-boston.opendata.arcgis.com/datasets/ce863d38db284efe83555caf8a832e2a_1.kml", quiet=TRUE)
+
+openspaces <- st_read("http://bostonopendata-boston.opendata.arcgis.com/datasets/2868d370c55d4d458d4ae2224ef8cddd_7.kml", quiet=TRUE)
+
+communityc <- st_read("http://bostonopendata-boston.opendata.arcgis.com/datasets/acedd06b39854088b0f2fefccffebf84_0.kml?outSR=%7B%22latestWkid%22%3A3857%2C%22wkid%22%3A102100%7D", quiet=TRUE)
+
+water <- st_read("http://bostonopendata-boston.opendata.arcgis.com/datasets/2b3c0fa13b1c468eb702a3645fcc6bcb_5.kml", quiet=TRUE)
+
+```
+
+Since I'm going to incorporate areas and distances at least in one map, I'll transform my data to the **NAD83 / Massachusetts Mainland** coordinate system.
+
+```{r, message=FALSE}
+MA_NAD83_plane <- "+proj=lcc +lat_1=42.68333333333333 +lat_2=41.71666666666667 +lat_0=41 +lon_0=-71.5 +x_0=200000.0001016002 +y_0=750000 +ellps=GRS80 +datum=NAD83 +to_meter=0.3048006096012192 +no_defs"
+
+nhoods <- nhoods %>%
+  st_transform(MA_NAD83_plane)
+
+trees <- trees %>%
+  st_transform(MA_NAD83_plane)
+
+openspaces <- openspaces %>%
+  st_transform(MA_NAD83_plane)
+
+communityc <- communityc %>%
+  st_transform(MA_NAD83_plane)
+
+water <- water %>%
+  st_transform(MA_NAD83_plane)
+
+```
+
+------
+BUFFER 
+
+### Hubways: creating a Buffer 
+400-meter buffer around each hubway stops in the City of Boston
+
+
+```{r}
+trees_buffer <- st_buffer(trees, dist = 250) %>%
+  st_union()
+ggplot(trees_buffer) + 
+  geom_sf(color = "orange1") +
+  theme_map()
+```
+
+```{r, message= FALSE}
+trees_cc <- communityc[trees_buffer,]
+ggplot(trees_cc) +
+  geom_sf() +
+  geom_sf(data = trees_cc, 
+          color = "#bae4bc", 
+          size = 0.05) +
+  theme_map()
+```
+trees <- trees %>%
+  st_join(hubwaystations_trees) %>%
+  mutate(by_hubwaystations = !is.na(Name.y))
+Now we can calculate how many trees are within 300 meters of a hubway station:
+
+n_hubwaystations_trees <- sum(trees$by_hubwaystations)
+n_hubwaystations_trees
+## [1] 59110
+And what percent of all trees does this represent?
+
+n_trees <- length(trees$by_hubwaystations)
+pct_hubwst_trees <-n_hubwaystations_trees / n_trees
+pct_hubwst_trees
+
+
+
+```{r, message=FALSE}
+trees <- trees %>%
+  st_join(trees_cc) %>%
+  mutate(by_communityc = !is.na(Name.y))
+```
+
+
+```{r, message= FALSE}
+n_trees_cc <- sum(trees$by_communityc)
+n_trees_cc
+```
+
+
+```{r, message=FALSE}
+hubways_communityc <- communityc[hubways_buffer,]
+ggplot(hubways_buffer) + 
+  geom_sf(data= water,fill = "lightblue", color = NA) +
+   geom_sf(data= nhoods, color = "gray", fill = NA, size=0.2)+
+  geom_sf() +
+  geom_sf(data = hubways_communityc,
+          color = "springgreen4",
+          size = 0.01) +
+  ggtitle("Boston, Massachusetts", subtitle = paste0("hubway stations"))+
+  theme_map()
+```
