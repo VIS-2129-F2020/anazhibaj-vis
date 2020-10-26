@@ -1,0 +1,81 @@
+---
+title: 'Interactive map: Access low to no income families have to open spaces'
+author: "Ana Zhibaj"
+date: "10/26/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r libraries, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(sf)
+library(leaflet)
+library(htmltools)
+library(htmlwidgets)
+library(ggplot2)
+library(ggthemes)
+library(units)
+library(mapview)
+library(leafpop)
+library(viridis)
+library(rgdal) 
+library(sp)
+library(stringr)
+library(dplyr)
+```
+
+```{r loading data, message=FALSE, warning=FALSE}
+leaflet_plane <- "+proj=longlat +datum=WGS84"
+open_space <- st_read("https://bostonopendata-boston.opendata.arcgis.com/datasets/2868d370c55d4d458d4ae2224ef8cddd_7.geojson", 
+                 quiet = TRUE) %>%
+  st_transform(crs = leaflet_plane)
+open_spacec <- st_centroid(open_space)
+lowinc <- st_read("200929_climatevulnerability.shp", 
+                   quiet = TRUE) %>%
+  st_transform(crs = leaflet_plane)
+
+```
+
+
+```{r plotting map}
+lowinc$describe <- 
+  paste(lowinc$Name, "<br>", 
+               prettyNum(lowinc$Low_to_No, digits = 5), "people with low to no income") %>% 
+  lapply(htmltools::HTML)
+open_spacec$describe1 <- 
+  paste("Name :", open_spacec$SITE_NAME, "<br>") %>%
+  paste("Area :", prettyNum(open_spacec$ACRES, digits=2), " acres",  "<br>") %>%
+  paste("Neighborhood :", open_spacec$DISTRICT, "<br>") %>%
+  lapply(htmltools::HTML)
+lowinc_map <- colorNumeric(palette = "viridis", 
+                    domain = lowinc$Low_to_No)
+lowinc_map <- leaflet(lowinc) %>%
+  addProviderTiles(providers$Stamen.Toner) %>%
+  addPolygons(color = viridis(n=6), stroke = FALSE,
+              highlightOptions = highlightOptions(fillOpacity = 0.5),
+              label = ~describe) %>%
+  addCircleMarkers(data= open_spacec, 
+             group="Open Space", 
+             fill = TRUE,
+             radius = 10,
+             color = "green",
+             fillOpacity = 0.5, 
+             stroke = FALSE,
+             label = ~ describe1,
+             clusterOptions = markerClusterOptions()) %>% ## Shoutout to Jiwon who taught me how to cluster
+  addControl("Park access for people with low to no income in Boston", position = "topright") %>%
+  addControl('<a href="200929_climatevulnerability.shp">Data source</a>',
+             position = "bottomleft")
+
+lowinc_map
+```
+
+```{r}
+saveWidget(lowinc_map, file = "parkslowincome.html")
+```
+
+
+
