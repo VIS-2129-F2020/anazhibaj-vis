@@ -1,0 +1,172 @@
+---
+author: "Ana Zhibaj"
+date: "10/30/2020"
+output: html_document
+---
+
+# In Vino veritas
+
+In this assignment, I will map wine production in 2019 for Italy.
+
+```{r setup, include=FALSE, message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r libraries, message=FALSE, warning=FALSE}
+library(ncdf4)
+library(raster)
+library(rgdal)
+library(ggplot2)
+library(tidyverse)
+library(sf)
+library(leaflet)
+library(htmltools)
+library(htmlwidgets)
+library(raster)
+library(gstat)
+library(spatial)
+library(mapview)
+library(rvest)
+library(RColorBrewer)
+library(tidyverse)
+library(sf)
+library(leaflet)
+library(htmltools)
+library(htmlwidgets)
+library(ggplot2)
+library(ggthemes)
+library(units)
+library(mapview)
+library(leafpop)
+library(viridis)
+library(rgdal) 
+library(sp)
+library(stringr)
+library(dplyr)
+```
+
+
+```{r loading data, message=FALSE, warning=FALSE}
+leaflet_plane <- "+proj=longlat +datum=WGS84"
+ven <- st_read("201102_ven.shp", 
+                 quiet = TRUE) %>%
+  st_transform(crs = leaflet_plane)
+```
+
+## Chloropleth map 
+
+The map has wine production in 2019 for Italy. The quantities are in hectoliters. 
+
+```{r chloropleth, message=FALSE, warning=FALSE}
+ven$label <- 
+  paste(ven$NOME_REG, "<br>", 
+        ven$Field7, "hectolitres of wine") %>% 
+  lapply(htmltools::HTML)
+
+bins <- seq(min(ven$Field7),
+            max(ven$Field7), by = 1)
+pal <- colorNumeric("YlOrRd", 
+                    domain = ven$Field7,
+                    na.color = "#00000000")
+
+leaflet(ven) %>%
+  addProviderTiles(providers$Stamen.TonerLite) %>%
+  addPolygons(highlightOptions = highlightOptions(fillOpacity = 1),
+              label = ~label,
+              fillColor = ~pal(Field7),
+              weight = 1, color = "black") %>% 
+  addLegend(pal = pal, 
+            values = ~Field7,
+            bins = 5,
+            opacity = 0.7, title = "Wine production per region in Italy, 2019",
+            position = "topright")
+```
+```{r chloropleth 2, message=FALSE, warning=FALSE}
+ven$label <- 
+  paste(ven$NOME_REG, "<br>", 
+        ven$Field7, "hectolitres of wine") %>% 
+  lapply(htmltools::HTML)
+
+bins <- seq(min(ven$Field7),
+            max(ven$Field7), by = 1)
+pal <- colorNumeric("YlOrRd", 
+                    domain = ven$Field7,
+                    na.color = "#00000000")
+```
+```{r}
+winomap <- leaflet(ven) %>%
+  addProviderTiles(providers$Stamen.TonerLite) %>%
+  addPolygons(highlightOptions = highlightOptions(fillOpacity = 1),
+              label = ~label,
+              fillColor = ~pal(Field7),
+              weight = 1, color = "black") %>% 
+  addLegend(pal = pal, 
+            values = ~Field7,
+            bins = 5,
+            opacity = 0.7, title = "Wine production per region in Italy, 2019",
+            position = "topright")
+
+winomap
+
+saveWidget(winomap, file = "invinoveritas2.html")
+```
+
+
+```{r dots map, message=FALSE, warning=FALSE}
+WGS84 <- "+proj=longlat +datum=WGS84"
+ven_qender <- st_centroid(ven) %>%
+  st_transform(WGS84)
+
+leaflet(ven_qender) %>%
+  addProviderTiles(providers$Stamen.TonerLite) %>%
+  addCircles(label = ~label,
+             fillColor = ~pal(Field7),
+             stroke = FALSE, 
+             radius = 26000, 
+             fillOpacity = 1) %>% 
+  addLegend(pal = pal, 
+            values = ~Field7,
+            bins = 5,
+            opacity = 0.7, title = "Wine production per region in Italy, 2019",
+            position = "topright")
+```
+
+```{r assign projection plane, message=FALSE, warning=FALSE}
+Italy <- "+proj=tmerc +lat_0=0 +lon_0=-3.45233333333333 +k=0.9996 +x_0=1500000 +y_0=0 +ellps=intl +pm=rome +units=m +no_defs"
+ven_qender_sp <- ven_qender %>%
+  as_Spatial()
+
+ven_sp <- ven %>%
+  as_Spatial()
+```
+
+```{r raster, message=FALSE, warning=FALSE}
+ven_raster <- raster(ven_sp, resolution = 0.01)
+```
+
+```{r raster two, message=FALSE, warning=FALSE}
+gs <- gstat(formula=Field7~1, locations=ven_qender_sp)
+idw_interp <- interpolate(ven_raster, gs)
+
+idw_interp_clip <- mask(idw_interp, ven_sp)
+```
+
+## Interpolation map 
+
+```{r interpolation map, message=FALSE, warning=FALSE}
+leaflet(ven_qender) %>%
+  addProviderTiles(providers$Stamen.TonerLite) %>%
+  addRasterImage(idw_interp_clip, colors = pal, opacity = 0.8) %>% 
+  addLegend(pal = pal, 
+            values = ~Field7,
+            bins = 5,
+            opacity = 0.7, title = "Wine production per region in Italy, 2019",
+            position = "topright")
+```
+
+ Your submission should include a discussion of which of these three methods is (a)
+most informative, (b) most interesting, (c) most appropriate to the data, and (d) best.
+
+## Discussion
+
+Toscana is the region that produces the least wine (81 hectoliters), while the region that produces the most is Friuli Venezia Giulia, 11333 hectoliters. Both the interpolation map and the chloropleth map are informative. However, I think the most interesting map is the interpolation map. Essentially, the interpolation map is the most appropriate to visualize the data. Come to think about it, the adminsitrative definitions of the regions are to some extent arbitrary. While wine production relies on industrial capacities (ergo, socio-economical factors of the region), I am most interested in the distribution and frequence of vinyards. 
